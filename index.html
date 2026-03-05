@@ -7,47 +7,48 @@
     <style>
         body, html { margin: 0; padding: 0; width: 100vw; height: 100vh; background-color: #000; overflow: hidden; font-family: 'Archivo Black', sans-serif; }
         .idle-cursor { cursor: none !important; }
-
         #bg-blur { position: fixed; top: -5%; left: -5%; width: 110%; height: 110%; background-size: cover; background-position: center; filter: blur(6px) brightness(0.3); z-index: 1; pointer-events: none; transition: opacity 0.5s; }
         #art-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; z-index: 10; pointer-events: none; }
-        
-        #album-art { 
-            max-width: 80%; max-height: 80%; 
-            object-fit: contain; display: none; 
-            box-shadow: 0 25px 60px rgba(0,0,0,0.9); 
-            border-radius: 4px; 
+        #album-art {
+            max-width: 80%; max-height: 80%;
+            object-fit: contain; display: none;
+            box-shadow: 0 25px 60px rgba(0,0,0,0.9);
+            border-radius: 4px;
             will-change: transform;
             /* STRIKE THE TRANSITION: We do all movement in JS to prevent ramping */
-            transition: none !important; 
+            transition: none !important;
         }
-        
         #blackout { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; opacity: 0; z-index: 100; pointer-events: none; }
-
         #login-btn { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 99999; padding: 25px 50px; font-size: 22px; background-color: #1DB954; color: white; border: none; border-radius: 50px; font-weight: bold; cursor: pointer; }
-        
-        #credits { 
-            position: absolute; bottom: 60px; left: 60px; color: #fff; display: none; flex-direction: column; z-index: 20; line-height: 1.1; pointer-events: none; transform-origin: bottom left; 
-            text-transform: uppercase; font-size: 32px; text-shadow: 3px 3px 0px #000; 
-            transition: transform 1.2s cubic-bezier(0.19, 1, 0.22, 1), opacity 1s; 
+        #credits {
+            position: absolute; bottom: 60px; left: 60px; color: #fff; display: none; flex-direction: column; z-index: 20; line-height: 1.1; pointer-events: none; transform-origin: bottom left;
+            text-transform: uppercase; font-size: 32px; text-shadow: 3px 3px 0px #000;
+            transition: transform 1.2s cubic-bezier(0.19, 1, 0.22, 1), opacity 1s;
         }
         .credits-focal { transform: scale(1.5); opacity: 1; }
-
         #settings-container { position: fixed; top: 20px; right: 20px; z-index: 99998; display: flex; flex-direction: column; align-items: flex-end; transition: opacity 0.5s; }
         .ui-hidden { opacity: 0 !important; pointer-events: none; }
         #gear-icon { font-size: 32px; cursor: pointer; padding: 10px; color: white; opacity: 0.6; }
         #ui-panel { background: rgba(0,0,0,0.95); padding: 20px; border-radius: 12px; border: 1px solid #333; color: white; width: 220px; display: none; flex-direction: column; gap: 10px; margin-top: 5px; font-family: sans-serif; }
         .ui-btn { background: #222; color: white; border: 1px solid #444; padding: 6px; border-radius: 6px; cursor: pointer; text-transform: uppercase; font-size: 10px; font-weight: bold; width: 100%; }
         input[type=range] { width:100%; accent-color:#1DB954; cursor: pointer; }
+        #playback-controls { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 99997; display: none; align-items: center; gap: 6px; background: rgba(0,0,0,0.65); padding: 8px 18px; border-radius: 40px; backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,0.12); transition: opacity 0.5s; }
+        .pb-btn { background: none; border: none; color: white; cursor: pointer; font-size: 22px; width: 46px; height: 46px; display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: background 0.15s; opacity: 0.85; }
+        .pb-btn:hover { background: rgba(255,255,255,0.15); opacity: 1; }
+        #like-btn { font-size: 20px; }
+        #like-btn.liked { color: #1DB954; }
+        #ctrl-divider { width: 1px; height: 26px; background: rgba(255,255,255,0.2); margin: 0 4px; }
+        #clock { position: fixed; top: 20px; left: 20px; z-index: 99997; color: white; font-family: 'Archivo Black', sans-serif; font-size: 20px; letter-spacing: 3px; text-shadow: 2px 2px 0px #000; transition: opacity 0.5s; pointer-events: none; display: none; }
     </style>
 </head>
 <body>
     <div id="bg-blur"></div><div id="blackout"></div>
     <button id="login-btn">CONNECT TO SPOTIFY</button>
     <div id="settings-container">
-        <div id="gear-icon">⚙</div>
+        <div id="gear-icon">&#9881;</div>
         <div id="ui-panel">
             <button id="game-toggle" class="ui-btn">Mode: ZOOM</button>
-            <button id="fs-btn" class="ui-btn">⛶ Fullscreen</button>
+            <button id="fs-btn" class="ui-btn">&#11036; Fullscreen</button>
             <hr style="border: 0; border-top: 1px solid #333;">
             <div id="zoom-controls">
                 <div style="font-size:9px;color:#aaa;text-transform:uppercase;">Zoom Depth</div>
@@ -66,11 +67,20 @@
     <div id="credits">
         <div id="artist-name"></div><div id="song-name"></div><div id="album-name"></div><div id="release-year"></div>
     </div>
+    <div id="playback-controls">
+        <button class="pb-btn" id="prev-btn" title="Previous">&#9198;</button>
+        <button class="pb-btn" id="play-btn" title="Play/Pause">&#9654;</button>
+        <button class="pb-btn" id="next-btn" title="Next">&#9197;</button>
+        <div id="ctrl-divider"></div>
+        <button class="pb-btn" id="like-btn" title="Like">&#9825;</button>
+    </div>
+    <div id="clock"></div>
 
     <script>
         const CLIENT_ID = '9b633913a2844cd5924c7e923f84325d';
         // Dynamic: works on localhost, GitHub Pages, Netlify, or any domain
         const REDIRECT_URI = window.location.origin + window.location.pathname;
+        const SCOPE = 'user-read-currently-playing user-modify-playback-state user-library-read user-library-modify';
 
         const gear = document.getElementById('gear-icon');
         const panel = document.getElementById('ui-panel');
@@ -78,15 +88,24 @@
         const blackout = document.getElementById('blackout');
         const albumArt = document.getElementById('album-art');
         const credits = document.getElementById('credits');
+        const controls = document.getElementById('playback-controls');
+        const clockEl = document.getElementById('clock');
 
-        // --- Idle cursor / UI hide logic (unchanged) ---
+        // --- Idle cursor / UI hide logic ---
         let idleTimer;
         function resetIdleTimer() {
             settings.classList.remove('ui-hidden');
+            controls.classList.remove('ui-hidden');
+            clockEl.classList.remove('ui-hidden');
             document.body.classList.remove('idle-cursor');
             clearTimeout(idleTimer);
             if (panel.style.display !== 'flex') {
-                idleTimer = setTimeout(() => { settings.classList.add('ui-hidden'); document.body.classList.add('idle-cursor'); }, 3000);
+                idleTimer = setTimeout(() => {
+                    settings.classList.add('ui-hidden');
+                    controls.classList.add('ui-hidden');
+                    clockEl.classList.add('ui-hidden');
+                    document.body.classList.add('idle-cursor');
+                }, 3000);
             }
         }
         window.onmousemove = resetIdleTimer;
@@ -96,6 +115,9 @@
         let isGameMode = false, state = "ZOOM_IN", zoomPhase = 0, zoomSpeed = 0.0003, targetDepth = 4.0;
         let holdCounter = 0, fadeLevel = 0, currentX = 50, currentY = 50;
         let bX = 50, bY = 50, bVelX = 1.5, bVelY = 1.5;
+
+        // --- Playback / Like state ---
+        let currentTrackId = null, isPlaying = false, isLiked = false;
 
         function getTrueRandomPoint(oldX, oldY) {
             let rx, ry, dist, attempts = 0;
@@ -110,7 +132,6 @@
 
         // --- Animation loop with visibility pause ---
         let animFrameId = null;
-
         function runAnimation() {
             if (isGameMode) {
                 const rect = albumArt.getBoundingClientRect();
@@ -135,8 +156,8 @@
                             fadeLevel = 1;
                             const pt = getTrueRandomPoint(currentX, currentY);
                             currentX = pt.x; currentY = pt.y;
-            albumArt.style.transformOrigin = `${currentX}% ${currentY}%`;
-            state = "FADE_IN";
+                            albumArt.style.transformOrigin = currentX + '% ' + currentY + '%';
+                            state = "FADE_IN";
                         }
                         break;
                     case "FADE_IN":
@@ -152,14 +173,14 @@
                         if (holdCounter <= 0) {
                             const pt = getTrueRandomPoint(currentX, currentY);
                             currentX = pt.x; currentY = pt.y;
-            albumArt.style.transformOrigin = `${currentX}% ${currentY}%`;
-            state = "ZOOM_IN";
+                            albumArt.style.transformOrigin = currentX + '% ' + currentY + '%';
+                            state = "ZOOM_IN";
                         }
                         break;
                 }
                 // LINEAR CALCULATION Jerry: No easing, no ramping
-        albumArt.style.transform = `scale(${1 + (zoomPhase * (targetDepth - 1))})`;
-        }
+                albumArt.style.transform = 'scale(' + (1 + (zoomPhase * (targetDepth - 1))) + ')';
+            }
             blackout.style.opacity = fadeLevel;
             animFrameId = requestAnimationFrame(runAnimation);
         }
@@ -177,10 +198,8 @@
         async function generatePKCE() {
             const array = new Uint8Array(32);
             crypto.getRandomValues(array);
-            // Base64url-encode the raw random bytes as the verifier
             const verifier = btoa(String.fromCharCode(...array))
                 .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-            // SHA-256 hash the verifier, then base64url-encode it as the challenge
             const encoder = new TextEncoder();
             const digest = await crypto.subtle.digest('SHA-256', encoder.encode(verifier));
             const challenge = btoa(String.fromCharCode(...new Uint8Array(digest)))
@@ -217,13 +236,59 @@
             btn.style.display = 'block';
         }
 
+        // --- Like / Unlike ---
+        async function checkLiked(trackId) {
+            const token = localStorage.getItem('access_token');
+            if (!token || !trackId) return;
+            try {
+                const r = await fetch('https://api.spotify.com/v1/me/tracks/contains?ids=' + trackId, {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                if (r.ok) {
+                    const data = await r.json();
+                    isLiked = data[0];
+                    const lb = document.getElementById('like-btn');
+                    lb.innerHTML = isLiked ? '&#9829;' : '&#9825;';
+                    lb.classList.toggle('liked', isLiked);
+                }
+            } catch(e) {}
+        }
+
+        async function toggleLike() {
+            const token = localStorage.getItem('access_token');
+            if (!token || !currentTrackId) return;
+            const method = isLiked ? 'DELETE' : 'PUT';
+            try {
+                await fetch('https://api.spotify.com/v1/me/tracks?ids=' + currentTrackId, {
+                    method,
+                    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }
+                });
+                isLiked = !isLiked;
+                const lb = document.getElementById('like-btn');
+                lb.innerHTML = isLiked ? '&#9829;' : '&#9825;';
+                lb.classList.toggle('liked', isLiked);
+            } catch(e) {}
+        }
+
+        // --- Playback commands ---
+        async function playbackCommand(endpoint, method) {
+            const token = localStorage.getItem('access_token');
+            if (!token) return;
+            try {
+                await fetch('https://api.spotify.com/v1/me/player/' + endpoint, {
+                    method: method || 'POST',
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+            } catch(e) {}
+        }
+
         // --- Spotify polling (recursive setTimeout prevents interval stacking) ---
         async function update() {
             const token = localStorage.getItem('access_token');
             if (!token) return;
             try {
                 const r = await fetch('https://api.spotify.com/v1/me/player/currently-playing', {
-                    headers: { 'Authorization': `Bearer ${token}` }
+                    headers: { 'Authorization': 'Bearer ' + token }
                 });
                 if (r.status === 401) {
                     const ok = await refreshAccessToken();
@@ -233,17 +298,22 @@
                     if (!d.item) { setTimeout(update, 2000); return; }
                     document.getElementById('login-btn').style.display = 'none';
                     albumArt.style.display = 'block'; credits.style.display = 'flex';
+                    controls.style.display = 'flex'; clockEl.style.display = 'block';
                     if (albumArt.src !== d.item.album.images[0].url) {
                         albumArt.src = d.item.album.images[0].url;
-                        document.getElementById('bg-blur').style.backgroundImage = `url(${d.item.album.images[0].url})`;
+                        document.getElementById('bg-blur').style.backgroundImage = 'url(' + d.item.album.images[0].url + ')';
                         state = "ZOOM_IN"; zoomPhase = 0; fadeLevel = 0; currentX = 50; currentY = 50;
                         albumArt.style.transformOrigin = "center center";
+                        checkLiked(d.item.id);
                     }
+                    currentTrackId = d.item.id;
+                    isPlaying = d.is_playing;
+                    document.getElementById('play-btn').innerHTML = isPlaying ? '&#9208;' : '&#9654;';
                     const prog = d.progress_ms, rem = d.item.duration_ms - prog;
                     if (prog < 15000 || rem < 15000) credits.classList.add('credits-focal');
                     else credits.classList.remove('credits-focal');
                     document.getElementById('artist-name').innerText = d.item.artists[0].name;
-                    document.getElementById('song-name').innerText = `"${d.item.name}"`;
+                    document.getElementById('song-name').innerText = '"' + d.item.name + '"';
                     document.getElementById('album-name').innerText = d.item.album.name;
                     document.getElementById('release-year').innerText = d.item.album.release_date.substring(0,4);
                 }
@@ -255,7 +325,10 @@
         document.getElementById('login-btn').onclick = async () => {
             const { verifier, challenge } = await generatePKCE();
             localStorage.setItem('code_verifier', verifier);
-            window.location.href = `https://accounts.spotify.com/authorize?client_id=${CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=user-read-currently-playing&code_challenge_method=S256&code_challenge=${challenge}`;
+            window.location.href = 'https://accounts.spotify.com/authorize?client_id=' + CLIENT_ID +
+                '&response_type=code&redirect_uri=' + encodeURIComponent(REDIRECT_URI) +
+                '&scope=' + encodeURIComponent(SCOPE) +
+                '&code_challenge_method=S256&code_challenge=' + challenge;
         };
 
         // --- Bootstrap: handle OAuth callback and start app ---
@@ -282,6 +355,20 @@
             }
             if (localStorage.getItem('access_token')) { update(); runAnimation(); }
         };
+
+        // --- Clock ---
+        function updateClock() {
+            const now = new Date();
+            clockEl.textContent = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
+        }
+        updateClock();
+        setInterval(updateClock, 10000);
+
+        // --- Playback button handlers ---
+        document.getElementById('prev-btn').onclick = () => playbackCommand('previous');
+        document.getElementById('play-btn').onclick = () => playbackCommand(isPlaying ? 'pause' : 'play', 'PUT');
+        document.getElementById('next-btn').onclick = () => playbackCommand('next');
+        document.getElementById('like-btn').onclick = toggleLike;
 
         // --- Settings panel (unchanged) ---
         document.getElementById('game-toggle').onclick = (e) => {

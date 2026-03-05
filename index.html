@@ -120,7 +120,9 @@
         let currentTrackId = null, isPlaying = false, isLiked = false;
         let pkceVerifier = null, pkceChallenge = null;
         // Pre-generate PKCE on load so login click is fully synchronous (no async/await)
-        generatePKCE().then(p => { pkceVerifier = p.verifier; pkceChallenge = p.challenge; localStorage.setItem('code_verifier', p.verifier); });
+        if (!new URLSearchParams(window.location.search).get('code')) {
+            generatePKCE().then(p => { pkceVerifier = p.verifier; pkceChallenge = p.challenge; localStorage.setItem('code_verifier', p.verifier); });
+        }
 
         function getTrueRandomPoint(oldX, oldY) {
             let rx, ry, dist, attempts = 0;

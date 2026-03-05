@@ -118,6 +118,9 @@
 
         // --- Playback / Like state ---
         let currentTrackId = null, isPlaying = false, isLiked = false;
+        let pkceVerifier = null, pkceChallenge = null;
+        // Pre-generate PKCE on load so login click is fully synchronous (no async/await)
+        generatePKCE().then(p => { pkceVerifier = p.verifier; pkceChallenge = p.challenge; localStorage.setItem('code_verifier', p.verifier); });
 
         function getTrueRandomPoint(oldX, oldY) {
             let rx, ry, dist, attempts = 0;
@@ -322,13 +325,12 @@
         }
 
         // --- Login button: full PKCE flow ---
-        document.getElementById('login-btn').onclick = async () => {
-            const { verifier, challenge } = await generatePKCE();
-            localStorage.setItem('code_verifier', verifier);
-            window.location.href = 'https://accounts.spotify.com/authorize?client_id=' + CLIENT_ID +
+        document.getElementById('login-btn').onclick = () => {
+            if (!pkceChallenge) return;
+            window.location.assign('https://accounts.spotify.com/authorize?client_id=' + CLIENT_ID +
                 '&response_type=code&redirect_uri=' + encodeURIComponent(REDIRECT_URI) +
                 '&scope=' + encodeURIComponent(SCOPE) +
-                '&code_challenge_method=S256&code_challenge=' + challenge;
+                '&code_challenge_method=S256&code_challenge=' + pkceChallenge);
         };
 
         // --- Bootstrap: handle OAuth callback and start app ---
@@ -346,6 +348,7 @@
                         localStorage.setItem('access_token', data.access_token);
                         if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
                         window.history.replaceState({}, '', window.location.pathname);
+                        generatePKCE().then(p => { pkceVerifier = p.verifier; pkceChallenge = p.challenge; localStorage.setItem('code_verifier', p.verifier); });
                     } else {
                         document.getElementById('login-btn').textContent = 'Auth failed \u2014 click to try again';
                     }

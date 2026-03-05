@@ -41,6 +41,8 @@
         #clock { position: fixed; top: 20px; left: 20px; z-index: 99997; color: white; font-family: 'Archivo Black', sans-serif; font-size: 20px; letter-spacing: 3px; text-shadow: 2px 2px 0px #000; transition: opacity 0.5s; pointer-events: none; display: none; }
         #nothing-playing { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 50; color: white; font-family: 'Archivo Black', sans-serif; font-size: 36px; letter-spacing: 6px; text-shadow: 3px 3px 0px #000; display: none; pointer-events: none; }
         .vis-off { display: none !important; }
+        #score-display { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 99997; color: white; font-family: 'Archivo Black', sans-serif; font-size: 20px; letter-spacing: 3px; text-shadow: 2px 2px 0px #000; transition: opacity 0.5s; pointer-events: none; display: none; }
+        #corner-flash { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #fff; opacity: 0; z-index: 199999; pointer-events: none; }
     </style>
 </head>
 <body>
@@ -62,6 +64,7 @@
                 <div style="font-size:9px;color:#aaa;text-transform:uppercase;">Bounce Speed</div>
                 <input type="range" id="bounce-speed" min="0.1" max="3.0" step="0.1" value="1.5">
             </div>
+            <button id="corner-test-btn" class="ui-btn" style="display:none;">&#128208; CORNER TEST</button>
             <hr style="border: 0; border-top: 1px solid #333;">
             <button id="clock-toggle" class="ui-btn">CLOCK: FADE</button>
             <button id="controls-toggle" class="ui-btn">CONTROLS: FADE</button>
@@ -83,6 +86,8 @@
     </div>
     <div id="clock"></div>
     <div id="nothing-playing">NOTHING PLAYING</div>
+    <div id="corner-flash"></div>
+    <div id="score-display">0</div>
 
     <script>
         const CLIENT_ID = '9b633913a2844cd5924c7e923f84325d';
@@ -98,11 +103,14 @@
         const credits = document.getElementById('credits');
         const controls = document.getElementById('playback-controls');
         const clockEl = document.getElementById('clock');
+        const scoreEl = document.getElementById('score-display');
+        const flashEl = document.getElementById('corner-flash');
 
         // --- Idle cursor / UI hide logic ---
         let idleTimer;
         function resetIdleTimer() {
             settings.classList.remove('ui-hidden');
+            scoreEl.classList.remove('ui-hidden');
             if (clockMode !== 2) clockEl.classList.remove('ui-hidden');
             if (controlsMode !== 2) controls.classList.remove('ui-hidden');
             if (creditsMode !== 2) credits.classList.remove('ui-hidden');
@@ -111,6 +119,7 @@
             if (panel.style.display !== 'flex') {
                 idleTimer = setTimeout(() => {
                     settings.classList.add('ui-hidden');
+                    scoreEl.classList.add('ui-hidden');
                     if (clockMode === 1) clockEl.classList.add('ui-hidden');
                     if (controlsMode === 1) controls.classList.add('ui-hidden');
                     if (creditsMode === 1) credits.classList.add('ui-hidden');
@@ -125,11 +134,12 @@
         let isGameMode = false, state = "ZOOM_IN", zoomPhase = 0, zoomSpeed = 0.0003, targetDepth = 4.0;
         let holdCounter = 0, fadeLevel = 0, currentX = 50, currentY = 50;
         let bX = 50, bY = 50, bVelX = 1.5, bVelY = 1.5;
+        let dvdScore = 0;
 
         // --- Playback / Like state ---
         let currentTrackId = null, isPlaying = false, isLiked = false;
         // --- Visibility modes: 0=ON, 1=FADE, 2=OFF ---
-        let clockMode = 1, controlsMode = 1, creditsMode = 1;
+        let clockMode = 1, controlsMode = 1, creditsMode = 0;
         const MODES = ['ON', 'FADE', 'OFF'];
         let pkceVerifier = null, pkceChallenge = null;
         // Pre-generate PKCE on load so login click is fully synchronous (no async/await)
@@ -152,11 +162,15 @@
         let animFrameId = null;
         function runAnimation() {
             if (isGameMode) {
-                const w = albumArt.naturalWidth * 0.3;
-                const h = albumArt.naturalHeight * 0.3;
-                if (bX + w >= window.innerWidth || bX <= 0) bVelX *= -1;
-                if (bY + h >= window.innerHeight || bY <= 0) bVelY *= -1;
+                const maxX = window.innerWidth - 220;
+                const maxY = window.innerHeight - 220;
                 bX += bVelX; bY += bVelY;
+                let hitX = false, hitY = false;
+                if (bX >= maxX) { bX = maxX; bVelX = -Math.abs(bVelX); hitX = true; }
+                else if (bX <= 0) { bX = 0; bVelX = Math.abs(bVelX); hitX = true; }
+                if (bY >= maxY) { bY = maxY; bVelY = -Math.abs(bVelY); hitY = true; }
+                else if (bY <= 0) { bY = 0; bVelY = Math.abs(bVelY); hitY = true; }
+                if (hitX && hitY) { dvdScore++; scoreEl.textContent = dvdScore; triggerCornerFlash(); }
                 albumArt.style.left = bX + "px"; albumArt.style.top = bY + "px";
                 albumArt.style.transform = "scale(0.3)";
             } else {
@@ -212,6 +226,12 @@
                 if (animFrameId === null && localStorage.getItem('access_token')) { runAnimation(); }
             }
         });
+
+        function triggerCornerFlash() {
+            flashEl.style.transition = 'none';
+            flashEl.style.opacity = '1';
+            requestAnimationFrame(() => { requestAnimationFrame(() => { flashEl.style.transition = 'opacity 300ms'; flashEl.style.opacity = '0'; }); });
+        }
 
         // --- PKCE helpers ---
         async function generatePKCE() {
@@ -408,8 +428,10 @@
             const artContainer = document.getElementById('art-container');
             const bounceCtrl = document.getElementById('bounce-controls');
             const zoomCtrl = document.getElementById('zoom-controls');
-            if (isGameMode) { artContainer.style.display = 'block'; albumArt.style.position = 'absolute'; bX = 100; bY = 100; bounceCtrl.style.display = 'block'; zoomCtrl.style.display = 'none'; }
-            else { artContainer.style.display = 'flex'; albumArt.style.position = 'relative'; albumArt.style.left = 'auto'; albumArt.style.top = 'auto'; bounceCtrl.style.display = 'none'; zoomCtrl.style.display = 'block'; }
+            const cornerTestBtn = document.getElementById('corner-test-btn');
+            dvdScore = 0; scoreEl.textContent = 0;
+            if (isGameMode) { artContainer.style.display = 'block'; albumArt.style.position = 'absolute'; bX = 100; bY = 100; bounceCtrl.style.display = 'block'; zoomCtrl.style.display = 'none'; cornerTestBtn.style.display = 'block'; scoreEl.style.display = 'block'; scoreEl.classList.remove('ui-hidden'); }
+            else { artContainer.style.display = 'flex'; albumArt.style.position = 'relative'; albumArt.style.left = 'auto'; albumArt.style.top = 'auto'; bounceCtrl.style.display = 'none'; zoomCtrl.style.display = 'block'; cornerTestBtn.style.display = 'none'; scoreEl.style.display = 'none'; }
         };
         document.getElementById('zoom-range').oninput = (e) => targetDepth = parseFloat(e.target.value);
         document.getElementById('speed-range').oninput = (e) => {
@@ -426,6 +448,7 @@
         document.getElementById('clock-toggle').onclick = () => cycleMode('clock', 'clock-toggle');
         document.getElementById('controls-toggle').onclick = () => cycleMode('controls', 'controls-toggle');
         document.getElementById('credits-toggle').onclick = () => cycleMode('credits', 'credits-toggle');
+        document.getElementById('corner-test-btn').onclick = () => { bX = 0; bY = 0; bVelX = -Math.abs(bVelX); bVelY = -Math.abs(bVelY); };
         document.getElementById('reset-btn').onclick = () => {
             targetDepth = 4.0; document.getElementById('zoom-range').value = 4.0;
             zoomSpeed = 0.0003; document.getElementById('speed-range').value = 50;

@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <title>MTV Style Spotify Player</title>
-    <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://use.typekit.net/cis2web.css">
     <style>
-        body, html { margin: 0; padding: 0; width: 100vw; height: 100vh; background-color: #000; overflow: hidden; font-family: 'Archivo Black', sans-serif; }
+        body, html { margin: 0; padding: 0; width: 100vw; height: 100vh; background-color: #000; overflow: hidden; font-family: 'kabel', sans-serif; font-weight: 900; }
         .idle-cursor { cursor: none !important; }
         #bg-blur { position: fixed; top: -5%; left: -5%; width: 110%; height: 110%; background-size: cover; background-position: center; filter: blur(6px) brightness(0.3); z-index: 1; pointer-events: none; transition: opacity 0.5s; }
         #art-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; z-index: 10; pointer-events: none; }
@@ -38,10 +38,9 @@
         #like-btn { font-size: 20px; }
         #like-btn.liked { color: #1DB954; }
         #ctrl-divider { width: 1px; height: 26px; background: rgba(255,255,255,0.2); margin: 0 4px; }
-        #clock { position: fixed; top: 20px; left: 20px; z-index: 99997; color: white; font-family: 'Archivo Black', sans-serif; font-size: 20px; letter-spacing: 3px; text-shadow: 2px 2px 0px #000; transition: opacity 0.5s; pointer-events: none; display: none; }
-        #nothing-playing { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 50; color: white; font-family: 'Archivo Black', sans-serif; font-size: 36px; letter-spacing: 6px; text-shadow: 3px 3px 0px #000; display: none; pointer-events: none; }
+        #clock { position: fixed; top: 20px; left: 20px; z-index: 99997; color: white; font-family: 'kabel', sans-serif; font-weight: 900; font-size: 20px; letter-spacing: 3px; text-shadow: 2px 2px 0px #000; transition: opacity 0.5s; pointer-events: none; display: none; }
+        #nothing-playing { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 50; color: white; font-family: 'kabel', sans-serif; font-weight: 900; font-size: 36px; letter-spacing: 6px; text-shadow: 3px 3px 0px #000; display: none; pointer-events: none; }
         .vis-off { display: none !important; }
-        #score-display { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 99997; color: white; font-family: 'Archivo Black', sans-serif; font-size: 20px; letter-spacing: 3px; text-shadow: 2px 2px 0px #000; transition: opacity 0.5s; pointer-events: none; display: none; }
         #corner-flash { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #fff; opacity: 0; z-index: 199999; pointer-events: none; }
     </style>
 </head>
@@ -68,7 +67,7 @@
             <hr style="border: 0; border-top: 1px solid #333;">
             <button id="clock-toggle" class="ui-btn">CLOCK: FADE</button>
             <button id="controls-toggle" class="ui-btn">CONTROLS: FADE</button>
-            <button id="credits-toggle" class="ui-btn">SONG INFO: FADE</button>
+            <button id="credits-toggle" class="ui-btn">SONG INFO: ON</button>
             <button id="reset-btn" class="ui-btn" style="margin-top:4px;">RESET DEFAULTS</button>
             <button id="logout-btn" class="ui-btn" style="color:#f44; margin-top:10px;">Logout</button>
         </div>
@@ -87,7 +86,6 @@
     <div id="clock"></div>
     <div id="nothing-playing">NOTHING PLAYING</div>
     <div id="corner-flash"></div>
-    <div id="score-display">0</div>
 
     <script>
         const CLIENT_ID = '9b633913a2844cd5924c7e923f84325d';
@@ -103,14 +101,12 @@
         const credits = document.getElementById('credits');
         const controls = document.getElementById('playback-controls');
         const clockEl = document.getElementById('clock');
-        const scoreEl = document.getElementById('score-display');
         const flashEl = document.getElementById('corner-flash');
 
         // --- Idle cursor / UI hide logic ---
         let idleTimer;
         function resetIdleTimer() {
             settings.classList.remove('ui-hidden');
-            scoreEl.classList.remove('ui-hidden');
             if (clockMode !== 2) clockEl.classList.remove('ui-hidden');
             if (controlsMode !== 2) controls.classList.remove('ui-hidden');
             if (creditsMode !== 2) credits.classList.remove('ui-hidden');
@@ -119,7 +115,6 @@
             if (panel.style.display !== 'flex') {
                 idleTimer = setTimeout(() => {
                     settings.classList.add('ui-hidden');
-                    scoreEl.classList.add('ui-hidden');
                     if (clockMode === 1) clockEl.classList.add('ui-hidden');
                     if (controlsMode === 1) controls.classList.add('ui-hidden');
                     if (creditsMode === 1) credits.classList.add('ui-hidden');
@@ -134,7 +129,6 @@
         let isGameMode = false, state = "ZOOM_IN", zoomPhase = 0, zoomSpeed = 0.0003, targetDepth = 4.0;
         let holdCounter = 0, fadeLevel = 0, currentX = 50, currentY = 50;
         let bX = 50, bY = 50, bVelX = 1.5, bVelY = 1.5;
-        let dvdScore = 0;
 
         // --- Playback / Like state ---
         let currentTrackId = null, isPlaying = false, isLiked = false;
@@ -158,21 +152,22 @@
             return { x: rx, y: ry };
         }
 
+        const DVD_SIZE = 200; // px — fixed size of the image in DVD mode
+
         // --- Animation loop with visibility pause ---
         let animFrameId = null;
         function runAnimation() {
             if (isGameMode) {
-                const maxX = window.innerWidth - 220;
-                const maxY = window.innerHeight - 220;
+                const maxX = window.innerWidth - DVD_SIZE;
+                const maxY = window.innerHeight - DVD_SIZE;
                 bX += bVelX; bY += bVelY;
                 let hitX = false, hitY = false;
                 if (bX >= maxX) { bX = maxX; bVelX = -Math.abs(bVelX); hitX = true; }
                 else if (bX <= 0) { bX = 0; bVelX = Math.abs(bVelX); hitX = true; }
                 if (bY >= maxY) { bY = maxY; bVelY = -Math.abs(bVelY); hitY = true; }
                 else if (bY <= 0) { bY = 0; bVelY = Math.abs(bVelY); hitY = true; }
-                if (hitX && hitY) { dvdScore++; scoreEl.textContent = dvdScore; triggerCornerFlash(); }
+                if (hitX && hitY) { triggerCornerFlash(); }
                 albumArt.style.left = bX + "px"; albumArt.style.top = bY + "px";
-                albumArt.style.transform = "scale(0.3)";
             } else {
                 switch(state) {
                     case "ZOOM_IN":
@@ -429,9 +424,8 @@
             const bounceCtrl = document.getElementById('bounce-controls');
             const zoomCtrl = document.getElementById('zoom-controls');
             const cornerTestBtn = document.getElementById('corner-test-btn');
-            dvdScore = 0; scoreEl.textContent = 0;
-            if (isGameMode) { artContainer.style.display = 'block'; albumArt.style.position = 'absolute'; bX = 100; bY = 100; bounceCtrl.style.display = 'block'; zoomCtrl.style.display = 'none'; cornerTestBtn.style.display = 'block'; scoreEl.style.display = 'block'; scoreEl.classList.remove('ui-hidden'); }
-            else { artContainer.style.display = 'flex'; albumArt.style.position = 'relative'; albumArt.style.left = 'auto'; albumArt.style.top = 'auto'; bounceCtrl.style.display = 'none'; zoomCtrl.style.display = 'block'; cornerTestBtn.style.display = 'none'; scoreEl.style.display = 'none'; }
+            if (isGameMode) { artContainer.style.display = 'block'; albumArt.style.position = 'absolute'; albumArt.style.width = DVD_SIZE + 'px'; albumArt.style.height = DVD_SIZE + 'px'; albumArt.style.maxWidth = 'none'; albumArt.style.maxHeight = 'none'; albumArt.style.transform = 'none'; bX = 100; bY = 100; bounceCtrl.style.display = 'block'; zoomCtrl.style.display = 'none'; cornerTestBtn.style.display = 'block'; }
+            else { artContainer.style.display = 'flex'; albumArt.style.position = 'relative'; albumArt.style.left = 'auto'; albumArt.style.top = 'auto'; albumArt.style.width = ''; albumArt.style.height = ''; albumArt.style.maxWidth = '80%'; albumArt.style.maxHeight = '80%'; bounceCtrl.style.display = 'none'; zoomCtrl.style.display = 'block'; cornerTestBtn.style.display = 'none'; }
         };
         document.getElementById('zoom-range').oninput = (e) => targetDepth = parseFloat(e.target.value);
         document.getElementById('speed-range').oninput = (e) => {

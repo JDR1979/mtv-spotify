@@ -230,13 +230,14 @@
 
         // --- Album label fetch ---
         async function fetchAlbumLabel(albumId) {
-            if (!albumId) return;
+            if (!albumId) { console.log('[label] no albumId'); return; }
             let token = localStorage.getItem('access_token');
-            if (!token) return;
+            if (!token) { console.log('[label] no token'); return; }
             try {
                 let r = await fetch('https://api.spotify.com/v1/albums/' + albumId + '?market=from_token', {
                     headers: { 'Authorization': 'Bearer ' + token }
                 });
+                console.log('[label] status:', r.status, 'albumId:', albumId);
                 if (r.status === 401) {
                     const ok = await refreshAccessToken();
                     if (!ok) return;
@@ -244,14 +245,18 @@
                     r = await fetch('https://api.spotify.com/v1/albums/' + albumId + '?market=from_token', {
                         headers: { 'Authorization': 'Bearer ' + token }
                     });
+                    console.log('[label] retry status:', r.status);
                 }
                 if (r.ok) {
                     const data = await r.json();
+                    console.log('[label] label:', data.label, 'release_date:', data.release_date);
                     const year = data.release_date ? data.release_date.substring(0, 4) : '';
                     const label = data.label || '';
                     document.getElementById('label-line').innerText = label && year ? label + ' (' + year + ')' : label || year;
+                } else {
+                    console.log('[label] non-ok response:', r.status);
                 }
-            } catch(e) {}
+            } catch(e) { console.log('[label] error:', e); }
         }
 
         // --- Spotify polling (recursive setTimeout prevents interval stacking) ---

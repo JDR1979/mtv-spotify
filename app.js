@@ -253,9 +253,15 @@
                     let label = data.label || '';
                     if (!label && data.copyrights && data.copyrights.length) {
                         const p = data.copyrights.find(c => c.type === 'P');
-                        if (p) label = p.text.replace(/[℗©(P)(C)]/g, '').replace(/^\s*\d{4}\s*/, '').trim();
+                        if (p) {
+                            label = p.text
+                                .replace(/\(P\)|\(C\)|[℗©]/g, '')
+                                .replace(/^\s*(This\s+\w+\s+)*\d{4}\s*/i, '')
+                                .replace(/,.*$/, '')
+                                .replace(/\s+(Limited|Ltd\.?|LLC|Inc\.?|under\b|a\s+division\b).*/i, '')
+                                .trim();
+                        }
                     }
-                    console.log('[label] label:', label, 'year:', year);
                     document.getElementById('label-line').innerText = label && year ? label + ' (' + year + ')' : label || year;
                 } else {
                     console.log('[label] non-ok response:', r.status);

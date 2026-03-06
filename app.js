@@ -249,10 +249,13 @@
                 }
                 if (r.ok) {
                     const data = await r.json();
-                    console.log('[label] keys:', Object.keys(data));
-                    console.log('[label] label:', data.label, 'release_date:', data.release_date);
                     const year = data.release_date ? data.release_date.substring(0, 4) : '';
-                    const label = data.label || '';
+                    let label = data.label || '';
+                    if (!label && data.copyrights && data.copyrights.length) {
+                        const p = data.copyrights.find(c => c.type === 'P');
+                        if (p) label = p.text.replace(/[℗©(P)(C)]/g, '').replace(/^\s*\d{4}\s*/, '').trim();
+                    }
+                    console.log('[label] label:', label, 'year:', year);
                     document.getElementById('label-line').innerText = label && year ? label + ' (' + year + ')' : label || year;
                 } else {
                     console.log('[label] non-ok response:', r.status);

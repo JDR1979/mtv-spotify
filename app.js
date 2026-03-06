@@ -1,3 +1,13 @@
+        // --- Spotify API endpoint constants ---
+        const SPOTIFY_API = {
+            CURRENTLY_PLAYING: 'https://api.spotify.com/v1/me/player/currently-playing',
+            PLAYER:            'https://api.spotify.com/v1/me/player',
+            TOKEN:             'https://accounts.spotify.com/api/token',
+            ALBUM:             (id) => `https://api.spotify.com/v1/albums/${id}`,
+            TRACKS_CONTAINS:   (id) => `https://api.spotify.com/v1/me/tracks/contains?ids=${id}`,
+            TRACKS:            (id) => `https://api.spotify.com/v1/me/tracks?ids=${id}`,
+        };
+
         const CLIENT_ID = '9b633913a2844cd5924c7e923f84325d';
         // Dynamic: works on localhost, GitHub Pages, Netlify, or any domain
         const REDIRECT_URI = window.location.origin + window.location.pathname;
@@ -77,7 +87,8 @@
                 if (bY >= maxY) { bY = maxY; bVelY = -Math.abs(bVelY); hitY = true; }
                 else if (bY <= 0) { bY = 0; bVelY = Math.abs(bVelY); hitY = true; }
                 if (hitX && hitY) { triggerCornerFlash(); }
-                albumArt.style.left = bX + "px"; albumArt.style.top = bY + "px";
+                // GPU-composited: translate instead of left/top (no layout reflow)
+                albumArt.style.transform = `translate(${bX}px, ${bY}px)`;
             } else {
                 switch(state) {
                     case "ZOOM_IN":
@@ -120,6 +131,7 @@
                 albumArt.style.transform = 'scale(' + (1 + (zoomPhase * (targetDepth - 1))) + ')';
             }
             blackout.style.opacity = fadeLevel;
+            if (fadeLevel > 0 && creditsMode !== 2) credits.classList.remove('ui-hidden');
             animFrameId = requestAnimationFrame(runAnimation);
         }
 
@@ -151,12 +163,29 @@
             return { verifier, challenge };
         }
 
+        // --- Error banner ---
+        let errorTimeout = null;
+        function showError(message, persistent = false) {
+            const banner = document.getElementById('error-banner');
+            if (!banner) return;
+            banner.textContent = typeof message === 'string' ? message : 'Connection error. Retrying...';
+            banner.style.display = 'block';
+            banner.style.opacity = '1';
+            clearTimeout(errorTimeout);
+            if (!persistent) {
+                errorTimeout = setTimeout(() => {
+                    banner.style.opacity = '0';
+                    setTimeout(() => { banner.style.display = 'none'; }, 500);
+                }, 5000);
+            }
+        }
+
         // --- Token refresh ---
         async function refreshAccessToken() {
             const refresh = localStorage.getItem('refresh_token');
             if (!refresh) return false;
             try {
-                const res = await fetch('https://accounts.spotify.com/api/token', {
+                const res = await fetch(SPOTIFY_API.TOKEN, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: new URLSearchParams({ client_id: CLIENT_ID, grant_type: 'refresh_token', refresh_token: refresh })
@@ -164,17 +193,30 @@
                 const data = await res.json();
                 if (data.access_token) {
                     localStorage.setItem('access_token', data.access_token);
+                    localStorage.setItem('token_expires_at', Date.now() + (data.expires_in * 1000));
                     if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
                     return true;
                 }
-            } catch (e) {}
+            } catch (e) {
+                console.error('[SpotifyPlayer] token refresh failed:', e);
+            }
             return false;
+        }
+
+        // --- Proactive token expiry check: refreshes 60s before expiry ---
+        async function getValidToken() {
+            const expiresAt = parseInt(localStorage.getItem('token_expires_at') || '0');
+            if (Date.now() > expiresAt - 60000) {
+                await refreshAccessToken();
+            }
+            return localStorage.getItem('access_token');
         }
 
         // --- Visible reconnect state ---
         function showReconnectState() {
             localStorage.removeItem('access_token');
             localStorage.removeItem('refresh_token');
+            localStorage.removeItem('token_expires_at');
             const btn = document.getElementById('login-btn');
             btn.textContent = 'Session expired \u2014 click to reconnect';
             btn.style.display = 'block';
@@ -182,10 +224,10 @@
 
         // --- Like / Unlike ---
         async function checkLiked(trackId) {
-            const token = localStorage.getItem('access_token');
+            const token = await getValidToken();
             if (!token || !trackId) return;
             try {
-                const r = await fetch('https://api.spotify.com/v1/me/tracks/contains?ids=' + trackId, {
+                const r = await fetch(SPOTIFY_API.TRACKS_CONTAINS(trackId), {
                     headers: { 'Authorization': 'Bearer ' + token }
                 });
                 if (r.ok) {
@@ -195,15 +237,17 @@
                     lb.innerHTML = isLiked ? '&#9829;' : '&#9825;';
                     lb.classList.toggle('liked', isLiked);
                 }
-            } catch(e) {}
+            } catch (e) {
+                console.error('[SpotifyPlayer] checkLiked failed:', e);
+            }
         }
 
         async function toggleLike() {
-            const token = localStorage.getItem('access_token');
+            const token = await getValidToken();
             if (!token || !currentTrackId) return;
             const method = isLiked ? 'DELETE' : 'PUT';
             try {
-                await fetch('https://api.spotify.com/v1/me/tracks?ids=' + currentTrackId, {
+                await fetch(SPOTIFY_API.TRACKS(currentTrackId), {
                     method,
                     headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }
                 });
@@ -211,19 +255,25 @@
                 const lb = document.getElementById('like-btn');
                 lb.innerHTML = isLiked ? '&#9829;' : '&#9825;';
                 lb.classList.toggle('liked', isLiked);
-            } catch(e) {}
+            } catch (e) {
+                console.error('[SpotifyPlayer] toggleLike failed:', e);
+                showError('Failed to update like status.');
+            }
         }
 
         // --- Playback commands ---
         async function playbackCommand(endpoint, method) {
-            const token = localStorage.getItem('access_token');
+            const token = await getValidToken();
             if (!token) return;
             try {
-                await fetch('https://api.spotify.com/v1/me/player/' + endpoint, {
+                await fetch(SPOTIFY_API.PLAYER + '/' + endpoint, {
                     method: method || 'POST',
                     headers: { 'Authorization': 'Bearer ' + token }
                 });
-            } catch(e) {}
+            } catch (e) {
+                console.error('[SpotifyPlayer] playback command failed:', e);
+                showError('Playback command failed.');
+            }
         }
 
         function toTitleCase(str) { return str.replace(/\S+/g, w => { const letters = w.replace(/[^a-zA-Z]/g, ''); if (letters.length >= 2 && letters === letters.toUpperCase()) return w; return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase(); }); }
@@ -231,10 +281,10 @@
         // --- Album label fetch ---
         async function fetchAlbumLabel(albumId) {
             if (!albumId) { console.log('[label] no albumId'); return; }
-            let token = localStorage.getItem('access_token');
+            let token = await getValidToken();
             if (!token) { console.log('[label] no token'); return; }
             try {
-                let r = await fetch('https://api.spotify.com/v1/albums/' + albumId + '?market=from_token', {
+                let r = await fetch(SPOTIFY_API.ALBUM(albumId) + '?market=from_token', {
                     headers: { 'Authorization': 'Bearer ' + token }
                 });
                 console.log('[label] status:', r.status, 'albumId:', albumId);
@@ -242,7 +292,7 @@
                     const ok = await refreshAccessToken();
                     if (!ok) return;
                     token = localStorage.getItem('access_token');
-                    r = await fetch('https://api.spotify.com/v1/albums/' + albumId + '?market=from_token', {
+                    r = await fetch(SPOTIFY_API.ALBUM(albumId) + '?market=from_token', {
                         headers: { 'Authorization': 'Bearer ' + token }
                     });
                     console.log('[label] retry status:', r.status);
@@ -266,76 +316,125 @@
                 } else {
                     console.log('[label] non-ok response:', r.status);
                 }
-            } catch(e) { console.log('[label] error:', e); }
+            } catch (e) {
+                console.error('[SpotifyPlayer] fetchAlbumLabel failed:', e);
+            }
         }
 
-        // --- Spotify polling (recursive setTimeout prevents interval stacking) ---
+        // --- Spotify polling ---
+        // Dynamic delay: paused=10s, playing=tracks remaining time (3s min, 30s max)
+        // 429 Too Many Requests: backs off per Retry-After header
         async function update() {
-            const token = localStorage.getItem('access_token');
+            const token = await getValidToken();
             if (!token) return;
+            let delay = 2000;
             try {
-                const r = await fetch('https://api.spotify.com/v1/me/player/currently-playing', {
+                const r = await fetch(SPOTIFY_API.CURRENTLY_PLAYING, {
                     headers: { 'Authorization': 'Bearer ' + token }
                 });
                 if (r.status === 401) {
                     const ok = await refreshAccessToken();
                     if (!ok) { showReconnectState(); return; }
+                    delay = 1000;
+                } else if (r.status === 429) {
+                    const retryAfter = parseInt(r.headers.get('Retry-After') || '5');
+                    setTimeout(update, retryAfter * 1000);
+                    return;
+                } else if (r.status === 403) {
+                    showError('Spotify Premium required for this feature.');
+                    delay = 10000;
+                } else if (r.status === 404) {
+                    showError('No active device found.');
+                    delay = 5000;
                 } else if (r.status === 204) {
                     document.getElementById('nothing-playing').style.display = 'block';
                     albumArt.style.display = 'none'; credits.style.display = 'none';
                     controls.style.display = 'none';
+                    delay = 10000;
                 } else if (r.status === 200) {
                     const d = await r.json();
                     if (!d.item) {
                         document.getElementById('nothing-playing').style.display = 'block';
                         albumArt.style.display = 'none'; credits.style.display = 'none';
                         controls.style.display = 'none';
-                        setTimeout(update, 2000); return;
+                        delay = 10000;
+                    } else {
+                        document.getElementById('nothing-playing').style.display = 'none';
+                        document.getElementById('login-btn').style.display = 'none';
+                        albumArt.style.display = 'block'; credits.style.display = 'flex';
+                        controls.style.display = 'flex'; clockEl.style.display = 'block';
+                        if (albumArt.src !== d.item.album.images[0].url) {
+                            albumArt.src = d.item.album.images[0].url;
+                            document.getElementById('bg-blur').style.backgroundImage = 'url(' + d.item.album.images[0].url + ')';
+                            state = "ZOOM_IN"; zoomPhase = 0; fadeLevel = 0; currentX = 50; currentY = 50;
+                            albumArt.style.transformOrigin = "center center";
+                            checkLiked(d.item.id);
+                        }
+                        if (d.item.album.id !== currentAlbumId) {
+                            currentAlbumId = d.item.album.id;
+                            fetchAlbumLabel(currentAlbumId);
+                        }
+                        currentTrackId = d.item.id;
+                        isPlaying = d.is_playing;
+                        document.getElementById('play-btn').innerHTML = isPlaying ? '&#9208;' : '&#9654;';
+                        const prog = d.progress_ms, rem = d.item.duration_ms - prog;
+                        if (prog < 15000 || rem < 15000) credits.classList.add('credits-focal');
+                        else credits.classList.remove('credits-focal');
+                        // DOM guards: only write if value changed
+                        const artistEl = document.getElementById('artist-name');
+                        const newArtist = toTitleCase(d.item.artists[0].name);
+                        if (artistEl.innerText !== newArtist) artistEl.innerText = newArtist;
+
+                        const songEl = document.getElementById('song-name');
+                        const newSong = '"' + toTitleCase(d.item.name) + '"';
+                        if (songEl.innerText !== newSong) songEl.innerText = newSong;
+
+                        const albumEl = document.getElementById('album-name');
+                        const newAlbum = toTitleCase(d.item.album.name);
+                        if (albumEl.innerText !== newAlbum) albumEl.innerText = newAlbum;
+
+                        delay = isPlaying
+                            ? Math.min(Math.max(rem - 500, 3000), 30000)
+                            : 10000;
                     }
-                    document.getElementById('nothing-playing').style.display = 'none';
-                    document.getElementById('login-btn').style.display = 'none';
-                    albumArt.style.display = 'block'; credits.style.display = 'flex';
-                    controls.style.display = 'flex'; clockEl.style.display = 'block';
-                    if (albumArt.src !== d.item.album.images[0].url) {
-                        albumArt.src = d.item.album.images[0].url;
-                        document.getElementById('bg-blur').style.backgroundImage = 'url(' + d.item.album.images[0].url + ')';
-                        state = "ZOOM_IN"; zoomPhase = 0; fadeLevel = 0; currentX = 50; currentY = 50;
-                        albumArt.style.transformOrigin = "center center";
-                        checkLiked(d.item.id);
-                    }
-                    if (d.item.album.id !== currentAlbumId) {
-                        currentAlbumId = d.item.album.id;
-                        fetchAlbumLabel(currentAlbumId);
-                    }
-                    currentTrackId = d.item.id;
-                    isPlaying = d.is_playing;
-                    document.getElementById('play-btn').innerHTML = isPlaying ? '&#9208;' : '&#9654;';
-                    const prog = d.progress_ms, rem = d.item.duration_ms - prog;
-                    if (prog < 15000 || rem < 15000) credits.classList.add('credits-focal');
-                    else credits.classList.remove('credits-focal');
-                    document.getElementById('artist-name').innerText = toTitleCase(d.item.artists[0].name);
-                    document.getElementById('song-name').innerText = '"' + toTitleCase(d.item.name) + '"';
-                    document.getElementById('album-name').innerText = toTitleCase(d.item.album.name);
                 }
-            } catch (e) {}
-            setTimeout(update, 2000);
+            } catch (e) {
+                console.error('[SpotifyPlayer] fetch failed:', e);
+                showError('Connection lost, retrying...');
+                delay = 5000;
+            }
+            setTimeout(update, delay);
         }
 
-        // --- Login button: full PKCE flow ---
+        // --- Login button: full PKCE flow with CSRF state ---
         document.getElementById('login-btn').onclick = () => {
             if (!pkceChallenge) return;
+            const csrfState = crypto.randomUUID();
+            localStorage.setItem('oauth_state', csrfState);
             window.location.assign('https://accounts.spotify.com/authorize?client_id=' + CLIENT_ID +
                 '&response_type=code&redirect_uri=' + encodeURIComponent(REDIRECT_URI) +
                 '&scope=' + encodeURIComponent(SCOPE) +
-                '&code_challenge_method=S256&code_challenge=' + pkceChallenge);
+                '&code_challenge_method=S256&code_challenge=' + pkceChallenge +
+                '&state=' + csrfState);
         };
 
         // --- Bootstrap: handle OAuth callback and start app ---
         window.onload = async () => {
-            const code = new URLSearchParams(window.location.search).get('code');
+            const params = new URLSearchParams(window.location.search);
+            const code = params.get('code');
             if (code) {
+                const returnedState = params.get('state');
+                const storedState = localStorage.getItem('oauth_state');
+                if (!returnedState || returnedState !== storedState) {
+                    showError('Authentication failed: invalid state. Please try logging in again.', true);
+                    document.getElementById('login-btn').textContent = 'Auth failed \u2014 click to try again';
+                    document.getElementById('login-btn').style.display = 'block';
+                    generatePKCE().then(p => { pkceVerifier = p.verifier; pkceChallenge = p.challenge; localStorage.setItem('code_verifier', p.verifier); });
+                    return;
+                }
+                localStorage.removeItem('oauth_state');
                 try {
-                    const res = await fetch('https://accounts.spotify.com/api/token', {
+                    const res = await fetch(SPOTIFY_API.TOKEN, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                         body: new URLSearchParams({ client_id: CLIENT_ID, grant_type: 'authorization_code', code, redirect_uri: REDIRECT_URI, code_verifier: localStorage.getItem('code_verifier') })
@@ -343,14 +442,18 @@
                     const data = await res.json();
                     if (data.access_token) {
                         localStorage.setItem('access_token', data.access_token);
+                        localStorage.setItem('token_expires_at', Date.now() + (data.expires_in * 1000));
                         if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
                         window.history.replaceState({}, '', window.location.pathname);
                         generatePKCE().then(p => { pkceVerifier = p.verifier; pkceChallenge = p.challenge; localStorage.setItem('code_verifier', p.verifier); });
                     } else {
                         document.getElementById('login-btn').textContent = 'Auth failed \u2014 click to try again';
+                        document.getElementById('login-btn').style.display = 'block';
                     }
                 } catch (e) {
+                    console.error('[SpotifyPlayer] auth callback failed:', e);
                     document.getElementById('login-btn').textContent = 'Auth failed \u2014 click to try again';
+                    document.getElementById('login-btn').style.display = 'block';
                 }
             }
             if (localStorage.getItem('access_token')) { update(); runAnimation(); }
@@ -373,15 +476,39 @@
         document.getElementById('next-btn').onclick = () => playbackCommand('next');
         document.getElementById('like-btn').onclick = toggleLike;
 
-        // --- Settings panel (unchanged) ---
+        // --- Settings panel ---
         document.getElementById('game-toggle').onclick = (e) => {
             isGameMode = !isGameMode; e.target.innerText = isGameMode ? "Mode: DVD BOUNCE" : "Mode: ZOOM";
             const artContainer = document.getElementById('art-container');
             const bounceCtrl = document.getElementById('bounce-controls');
             const zoomCtrl = document.getElementById('zoom-controls');
             const cornerTestBtn = document.getElementById('corner-test-btn');
-            if (isGameMode) { artContainer.style.display = 'block'; albumArt.style.position = 'absolute'; albumArt.style.width = DVD_SIZE + 'px'; albumArt.style.height = DVD_SIZE + 'px'; albumArt.style.maxWidth = 'none'; albumArt.style.maxHeight = 'none'; albumArt.style.transform = 'none'; bX = 100; bY = 100; bounceCtrl.style.display = 'block'; zoomCtrl.style.display = 'none'; cornerTestBtn.style.display = 'block'; }
-            else { artContainer.style.display = 'flex'; albumArt.style.position = 'relative'; albumArt.style.left = 'auto'; albumArt.style.top = 'auto'; albumArt.style.width = ''; albumArt.style.height = ''; albumArt.style.maxWidth = '80%'; albumArt.style.maxHeight = '80%'; bounceCtrl.style.display = 'none'; zoomCtrl.style.display = 'block'; cornerTestBtn.style.display = 'none'; }
+            if (isGameMode) {
+                artContainer.style.display = 'block';
+                albumArt.style.position = 'absolute';
+                albumArt.style.left = '0';
+                albumArt.style.top = '0';
+                albumArt.style.width = DVD_SIZE + 'px';
+                albumArt.style.height = DVD_SIZE + 'px';
+                albumArt.style.maxWidth = 'none';
+                albumArt.style.maxHeight = 'none';
+                albumArt.style.transform = 'none';
+                albumArt.style.willChange = 'transform';
+                bX = 100; bY = 100;
+                bounceCtrl.style.display = 'block'; zoomCtrl.style.display = 'none'; cornerTestBtn.style.display = 'block';
+            } else {
+                artContainer.style.display = 'flex';
+                albumArt.style.position = 'relative';
+                albumArt.style.left = 'auto';
+                albumArt.style.top = 'auto';
+                albumArt.style.width = '';
+                albumArt.style.height = '';
+                albumArt.style.maxWidth = '80%';
+                albumArt.style.maxHeight = '80%';
+                albumArt.style.willChange = '';
+                albumArt.style.transform = '';
+                bounceCtrl.style.display = 'none'; zoomCtrl.style.display = 'block'; cornerTestBtn.style.display = 'none';
+            }
         };
         document.getElementById('zoom-range').oninput = (e) => targetDepth = parseFloat(e.target.value);
         document.getElementById('speed-range').oninput = (e) => {

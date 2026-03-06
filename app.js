@@ -52,6 +52,7 @@
 
         // --- Playback / Like state ---
         let currentTrackId = null, currentAlbumId = null, isPlaying = false, isLiked = false;
+        let pollTimer = null;
         // --- Visibility modes: 0=ON, 1=FADE, 2=OFF ---
         let clockMode = 1, controlsMode = 1, creditsMode = 0;
         const MODES = ['ON', 'FADE', 'OFF'];
@@ -77,61 +78,63 @@
         // --- Animation loop with visibility pause ---
         let animFrameId = null;
         function runAnimation() {
-            if (isGameMode) {
-                const maxX = window.innerWidth - DVD_SIZE;
-                const maxY = window.innerHeight - DVD_SIZE;
-                bX += bVelX; bY += bVelY;
-                let hitX = false, hitY = false;
-                if (bX >= maxX) { bX = maxX; bVelX = -Math.abs(bVelX); hitX = true; }
-                else if (bX <= 0) { bX = 0; bVelX = Math.abs(bVelX); hitX = true; }
-                if (bY >= maxY) { bY = maxY; bVelY = -Math.abs(bVelY); hitY = true; }
-                else if (bY <= 0) { bY = 0; bVelY = Math.abs(bVelY); hitY = true; }
-                if (hitX && hitY) { triggerCornerFlash(); }
-                // GPU-composited: translate instead of left/top (no layout reflow)
-                albumArt.style.transform = `translate(${bX}px, ${bY}px)`;
-            } else {
-                switch(state) {
-                    case "ZOOM_IN":
-                        zoomPhase += zoomSpeed;
-                        if (zoomPhase >= 1) { zoomPhase = 1; state = "HOLD_PEAK"; holdCounter = 150; }
-                        break;
-                    case "HOLD_PEAK":
-                        holdCounter--;
-                        if (holdCounter <= 0) state = "FADE_OUT";
-                        break;
-                    case "FADE_OUT":
-                        fadeLevel += 0.02;
-                        if (fadeLevel >= 1) {
-                            fadeLevel = 1;
-                            const pt = getTrueRandomPoint(currentX, currentY);
-                            currentX = pt.x; currentY = pt.y;
-                            albumArt.style.transformOrigin = currentX + '% ' + currentY + '%';
-                            state = "FADE_IN";
-                        }
-                        break;
-                    case "FADE_IN":
-                        fadeLevel -= 0.02;
-                        if (fadeLevel <= 0) { fadeLevel = 0; state = "ZOOM_OUT"; }
-                        break;
-                    case "ZOOM_OUT":
-                        zoomPhase -= zoomSpeed;
-                        if (zoomPhase <= 0) { zoomPhase = 0; state = "HOLD_START"; holdCounter = 150; }
-                        break;
-                    case "HOLD_START":
-                        holdCounter--;
-                        if (holdCounter <= 0) {
-                            const pt = getTrueRandomPoint(currentX, currentY);
-                            currentX = pt.x; currentY = pt.y;
-                            albumArt.style.transformOrigin = currentX + '% ' + currentY + '%';
-                            state = "ZOOM_IN";
-                        }
-                        break;
+            if (isPlaying) {
+                if (isGameMode) {
+                    const maxX = window.innerWidth - DVD_SIZE;
+                    const maxY = window.innerHeight - DVD_SIZE;
+                    bX += bVelX; bY += bVelY;
+                    let hitX = false, hitY = false;
+                    if (bX >= maxX) { bX = maxX; bVelX = -Math.abs(bVelX); hitX = true; }
+                    else if (bX <= 0) { bX = 0; bVelX = Math.abs(bVelX); hitX = true; }
+                    if (bY >= maxY) { bY = maxY; bVelY = -Math.abs(bVelY); hitY = true; }
+                    else if (bY <= 0) { bY = 0; bVelY = Math.abs(bVelY); hitY = true; }
+                    if (hitX && hitY) { triggerCornerFlash(); }
+                    // GPU-composited: translate instead of left/top (no layout reflow)
+                    albumArt.style.transform = `translate(${bX}px, ${bY}px)`;
+                } else {
+                    switch(state) {
+                        case "ZOOM_IN":
+                            zoomPhase += zoomSpeed;
+                            if (zoomPhase >= 1) { zoomPhase = 1; state = "HOLD_PEAK"; holdCounter = 150; }
+                            break;
+                        case "HOLD_PEAK":
+                            holdCounter--;
+                            if (holdCounter <= 0) state = "FADE_OUT";
+                            break;
+                        case "FADE_OUT":
+                            fadeLevel += 0.02;
+                            if (fadeLevel >= 1) {
+                                fadeLevel = 1;
+                                const pt = getTrueRandomPoint(currentX, currentY);
+                                currentX = pt.x; currentY = pt.y;
+                                albumArt.style.transformOrigin = currentX + '% ' + currentY + '%';
+                                state = "FADE_IN";
+                            }
+                            break;
+                        case "FADE_IN":
+                            fadeLevel -= 0.02;
+                            if (fadeLevel <= 0) { fadeLevel = 0; state = "ZOOM_OUT"; }
+                            break;
+                        case "ZOOM_OUT":
+                            zoomPhase -= zoomSpeed;
+                            if (zoomPhase <= 0) { zoomPhase = 0; state = "HOLD_START"; holdCounter = 150; }
+                            break;
+                        case "HOLD_START":
+                            holdCounter--;
+                            if (holdCounter <= 0) {
+                                const pt = getTrueRandomPoint(currentX, currentY);
+                                currentX = pt.x; currentY = pt.y;
+                                albumArt.style.transformOrigin = currentX + '% ' + currentY + '%';
+                                state = "ZOOM_IN";
+                            }
+                            break;
+                    }
+                    // LINEAR CALCULATION Jerry: No easing, no ramping
+                    albumArt.style.transform = 'scale(' + (1 + (zoomPhase * (targetDepth - 1))) + ')';
                 }
-                // LINEAR CALCULATION Jerry: No easing, no ramping
-                albumArt.style.transform = 'scale(' + (1 + (zoomPhase * (targetDepth - 1))) + ')';
+                blackout.style.opacity = fadeLevel;
+                if (fadeLevel > 0 && creditsMode !== 2) credits.classList.remove('ui-hidden');
             }
-            blackout.style.opacity = fadeLevel;
-            if (fadeLevel > 0 && creditsMode !== 2) credits.classList.remove('ui-hidden');
             animFrameId = requestAnimationFrame(runAnimation);
         }
 
@@ -270,6 +273,8 @@
                     method: method || 'POST',
                     headers: { 'Authorization': 'Bearer ' + token }
                 });
+                clearTimeout(pollTimer);
+                pollTimer = setTimeout(() => update(), 500);
             } catch (e) {
                 console.error('[SpotifyPlayer] playback command failed:', e);
                 showError('Playback command failed.');
@@ -338,7 +343,7 @@
                     delay = 1000;
                 } else if (r.status === 429) {
                     const retryAfter = parseInt(r.headers.get('Retry-After') || '5');
-                    setTimeout(update, retryAfter * 1000);
+                    pollTimer = setTimeout(update, retryAfter * 1000);
                     return;
                 } else if (r.status === 403) {
                     showError('Spotify Premium required for this feature.');
@@ -403,7 +408,7 @@
                 showError('Connection lost, retrying...');
                 delay = 5000;
             }
-            setTimeout(update, delay);
+            pollTimer = setTimeout(update, delay);
         }
 
         // --- Login button: full PKCE flow with CSRF state ---

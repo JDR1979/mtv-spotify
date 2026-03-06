@@ -5,7 +5,7 @@
     <title>MTV Style Spotify Player</title>
     <link rel="stylesheet" href="https://use.typekit.net/cis2web.css">
     <style>
-        body, html { margin: 0; padding: 0; width: 100vw; height: 100vh; background-color: #000; overflow: hidden; font-family: 'kabel', sans-serif; font-weight: 900; }
+        body, html { margin: 0; padding: 0; width: 100vw; height: 100vh; background-color: #000; overflow: hidden; font-family: neue-kabel, sans-serif; font-weight: 900; }
         .idle-cursor { cursor: none !important; }
         #bg-blur { position: fixed; top: -5%; left: -5%; width: 110%; height: 110%; background-size: cover; background-position: center; filter: blur(6px) brightness(0.3); z-index: 1; pointer-events: none; transition: opacity 0.5s; }
         #art-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; z-index: 10; pointer-events: none; }
@@ -29,7 +29,7 @@
         #settings-container { position: fixed; top: 20px; right: 20px; z-index: 99998; display: flex; flex-direction: column; align-items: flex-end; transition: opacity 0.5s; }
         .ui-hidden { opacity: 0 !important; pointer-events: none; }
         #gear-icon { font-size: 32px; cursor: pointer; padding: 10px; color: white; opacity: 0.6; }
-        #ui-panel { background: rgba(0,0,0,0.95); padding: 20px; border-radius: 12px; border: 1px solid #333; color: white; width: 220px; display: none; flex-direction: column; gap: 10px; margin-top: 5px; font-family: 'kabel', sans-serif; font-weight: 900; }
+        #ui-panel { background: rgba(0,0,0,0.95); padding: 20px; border-radius: 12px; border: 1px solid #333; color: white; width: 220px; display: none; flex-direction: column; gap: 10px; margin-top: 5px; font-family: neue-kabel, sans-serif; font-weight: 900; }
         .ui-btn { background: #222; color: white; border: 1px solid #444; padding: 6px; border-radius: 6px; cursor: pointer; text-transform: uppercase; font-size: 10px; font-weight: 900; width: 100%; }
         input[type=range] { width:100%; accent-color:#1DB954; cursor: pointer; }
         #playback-controls { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 99997; display: none; align-items: center; gap: 6px; background: rgba(0,0,0,0.65); padding: 8px 18px; border-radius: 40px; backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,0.12); transition: opacity 0.5s; }
@@ -38,8 +38,8 @@
         #like-btn { font-size: 20px; }
         #like-btn.liked { color: #1DB954; }
         #ctrl-divider { width: 1px; height: 26px; background: rgba(255,255,255,0.2); margin: 0 4px; }
-        #clock { position: fixed; top: 20px; left: 20px; z-index: 99997; color: white; font-family: 'kabel', sans-serif; font-weight: 900; font-size: 20px; letter-spacing: 3px; text-shadow: 2px 2px 0px #000; transition: opacity 0.5s; pointer-events: none; display: none; }
-        #nothing-playing { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 50; color: white; font-family: 'kabel', sans-serif; font-weight: 900; font-size: 36px; letter-spacing: 6px; text-shadow: 3px 3px 0px #000; display: none; pointer-events: none; }
+        #clock { position: fixed; top: 20px; left: 20px; z-index: 99997; color: white; font-family: neue-kabel, sans-serif; font-weight: 900; font-size: 20px; letter-spacing: 3px; text-shadow: 2px 2px 0px #000; transition: opacity 0.5s; pointer-events: none; display: none; }
+        #nothing-playing { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 50; color: white; font-family: neue-kabel, sans-serif; font-weight: 900; font-size: 36px; letter-spacing: 6px; text-shadow: 3px 3px 0px #000; display: none; pointer-events: none; }
         .vis-off { display: none !important; }
         #corner-flash { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #fff; opacity: 0; z-index: 199999; pointer-events: none; }
     </style>

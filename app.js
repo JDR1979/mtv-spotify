@@ -226,7 +226,7 @@
             } catch(e) {}
         }
 
-        function toTitleCase(str) { return str.replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()); }
+        function toTitleCase(str) { return str.replace(/\S+/g, w => { const letters = w.replace(/[^a-zA-Z]/g, ''); if (letters.length >= 2 && letters === letters.toUpperCase()) return w; return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase(); }); }
 
         // --- Spotify polling (recursive setTimeout prevents interval stacking) ---
         async function update() {

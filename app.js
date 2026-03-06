@@ -249,6 +249,7 @@
                 }
                 if (r.ok) {
                     const data = await r.json();
+                    console.log('[label] keys:', Object.keys(data));
                     console.log('[label] label:', data.label, 'release_date:', data.release_date);
                     const year = data.release_date ? data.release_date.substring(0, 4) : '';
                     const label = data.label || '';

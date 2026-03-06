@@ -230,12 +230,21 @@
 
         // --- Album label fetch ---
         async function fetchAlbumLabel(albumId) {
-            const token = localStorage.getItem('access_token');
+            if (!albumId) return;
+            let token = localStorage.getItem('access_token');
             if (!token) return;
             try {
-                const r = await fetch('https://api.spotify.com/v1/albums/' + albumId, {
+                let r = await fetch('https://api.spotify.com/v1/albums/' + albumId + '?market=from_token', {
                     headers: { 'Authorization': 'Bearer ' + token }
                 });
+                if (r.status === 401) {
+                    const ok = await refreshAccessToken();
+                    if (!ok) return;
+                    token = localStorage.getItem('access_token');
+                    r = await fetch('https://api.spotify.com/v1/albums/' + albumId + '?market=from_token', {
+                        headers: { 'Authorization': 'Bearer ' + token }
+                    });
+                }
                 if (r.ok) {
                     const data = await r.json();
                     const year = data.release_date ? data.release_date.substring(0, 4) : '';

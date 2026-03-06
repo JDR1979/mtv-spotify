@@ -1,0 +1,362 @@
+        const CLIENT_ID = '9b633913a2844cd5924c7e923f84325d';
+        // Dynamic: works on localhost, GitHub Pages, Netlify, or any domain
+        const REDIRECT_URI = window.location.origin + window.location.pathname;
+        const SCOPE = 'user-read-currently-playing user-modify-playback-state user-library-read user-library-modify';
+
+        const gear = document.getElementById('gear-icon');
+        const panel = document.getElementById('ui-panel');
+        const settings = document.getElementById('settings-container');
+        const blackout = document.getElementById('blackout');
+        const albumArt = document.getElementById('album-art');
+        const credits = document.getElementById('credits');
+        const controls = document.getElementById('playback-controls');
+        const clockEl = document.getElementById('clock');
+        const flashEl = document.getElementById('corner-flash');
+
+        // --- Idle cursor / UI hide logic ---
+        let idleTimer;
+        function resetIdleTimer() {
+            settings.classList.remove('ui-hidden');
+            if (clockMode !== 2) clockEl.classList.remove('ui-hidden');
+            if (controlsMode !== 2) controls.classList.remove('ui-hidden');
+            if (creditsMode !== 2) credits.classList.remove('ui-hidden');
+            document.body.classList.remove('idle-cursor');
+            clearTimeout(idleTimer);
+            if (panel.style.display !== 'flex') {
+                idleTimer = setTimeout(() => {
+                    settings.classList.add('ui-hidden');
+                    if (clockMode === 1) clockEl.classList.add('ui-hidden');
+                    if (controlsMode === 1) controls.classList.add('ui-hidden');
+                    if (creditsMode === 1) credits.classList.add('ui-hidden');
+                    document.body.classList.add('idle-cursor');
+                }, 3000);
+            }
+        }
+        window.onmousemove = resetIdleTimer;
+        gear.onclick = () => { panel.style.display = (panel.style.display === 'flex') ? 'none' : 'flex'; resetIdleTimer(); };
+
+        // --- Ken Burns / DVD Bounce state (unchanged) ---
+        let isGameMode = false, state = "ZOOM_IN", zoomPhase = 0, zoomSpeed = 0.0003, targetDepth = 4.0;
+        let holdCounter = 0, fadeLevel = 0, currentX = 50, currentY = 50;
+        let bX = 50, bY = 50, bVelX = 1.5, bVelY = 1.5;
+
+        // --- Playback / Like state ---
+        let currentTrackId = null, isPlaying = false, isLiked = false;
+        // --- Visibility modes: 0=ON, 1=FADE, 2=OFF ---
+        let clockMode = 1, controlsMode = 1, creditsMode = 0;
+        const MODES = ['ON', 'FADE', 'OFF'];
+        let pkceVerifier = null, pkceChallenge = null;
+        // Pre-generate PKCE on load so login click is fully synchronous (no async/await)
+        if (!new URLSearchParams(window.location.search).get('code')) {
+            generatePKCE().then(p => { pkceVerifier = p.verifier; pkceChallenge = p.challenge; localStorage.setItem('code_verifier', p.verifier); });
+        }
+
+        function getTrueRandomPoint(oldX, oldY) {
+            let rx, ry, dist, attempts = 0;
+            do {
+                rx = Math.floor(Math.random() * 101);
+                ry = Math.floor(Math.random() * 101);
+                dist = Math.sqrt(Math.pow(rx - oldX, 2) + Math.pow(ry - oldY, 2));
+                attempts++;
+            } while (attempts < 50 && dist < 65);
+            return { x: rx, y: ry };
+        }
+
+        const DVD_SIZE = 200; // px — fixed size of the image in DVD mode
+
+        // --- Animation loop with visibility pause ---
+        let animFrameId = null;
+        function runAnimation() {
+            if (isGameMode) {
+                const maxX = window.innerWidth - DVD_SIZE;
+                const maxY = window.innerHeight - DVD_SIZE;
+                bX += bVelX; bY += bVelY;
+                let hitX = false, hitY = false;
+                if (bX >= maxX) { bX = maxX; bVelX = -Math.abs(bVelX); hitX = true; }
+                else if (bX <= 0) { bX = 0; bVelX = Math.abs(bVelX); hitX = true; }
+                if (bY >= maxY) { bY = maxY; bVelY = -Math.abs(bVelY); hitY = true; }
+                else if (bY <= 0) { bY = 0; bVelY = Math.abs(bVelY); hitY = true; }
+                if (hitX && hitY) { triggerCornerFlash(); }
+                albumArt.style.left = bX + "px"; albumArt.style.top = bY + "px";
+            } else {
+                switch(state) {
+                    case "ZOOM_IN":
+                        zoomPhase += zoomSpeed;
+                        if (zoomPhase >= 1) { zoomPhase = 1; state = "HOLD_PEAK"; holdCounter = 150; }
+                        break;
+                    case "HOLD_PEAK":
+                        holdCounter--;
+                        if (holdCounter <= 0) state = "FADE_OUT";
+                        break;
+                    case "FADE_OUT":
+                        fadeLevel += 0.02;
+                        if (fadeLevel >= 1) {
+                            fadeLevel = 1;
+                            const pt = getTrueRandomPoint(currentX, currentY);
+                            currentX = pt.x; currentY = pt.y;
+                            albumArt.style.transformOrigin = currentX + '% ' + currentY + '%';
+                            state = "FADE_IN";
+                        }
+                        break;
+                    case "FADE_IN":
+                        fadeLevel -= 0.02;
+                        if (fadeLevel <= 0) { fadeLevel = 0; state = "ZOOM_OUT"; }
+                        break;
+                    case "ZOOM_OUT":
+                        zoomPhase -= zoomSpeed;
+                        if (zoomPhase <= 0) { zoomPhase = 0; state = "HOLD_START"; holdCounter = 150; }
+                        break;
+                    case "HOLD_START":
+                        holdCounter--;
+                        if (holdCounter <= 0) {
+                            const pt = getTrueRandomPoint(currentX, currentY);
+                            currentX = pt.x; currentY = pt.y;
+                            albumArt.style.transformOrigin = currentX + '% ' + currentY + '%';
+                            state = "ZOOM_IN";
+                        }
+                        break;
+                }
+                // LINEAR CALCULATION Jerry: No easing, no ramping
+                albumArt.style.transform = 'scale(' + (1 + (zoomPhase * (targetDepth - 1))) + ')';
+            }
+            blackout.style.opacity = fadeLevel;
+            animFrameId = requestAnimationFrame(runAnimation);
+        }
+
+        // Pause the rAF loop entirely when tab is hidden; resume when visible
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                if (animFrameId !== null) { cancelAnimationFrame(animFrameId); animFrameId = null; }
+            } else {
+                if (animFrameId === null && localStorage.getItem('access_token')) { runAnimation(); }
+            }
+        });
+
+        function triggerCornerFlash() {
+            flashEl.style.transition = 'none';
+            flashEl.style.opacity = '1';
+            requestAnimationFrame(() => { requestAnimationFrame(() => { flashEl.style.transition = 'opacity 300ms'; flashEl.style.opacity = '0'; }); });
+        }
+
+        // --- PKCE helpers ---
+        async function generatePKCE() {
+            const array = new Uint8Array(32);
+            crypto.getRandomValues(array);
+            const verifier = btoa(String.fromCharCode(...array))
+                .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+            const encoder = new TextEncoder();
+            const digest = await crypto.subtle.digest('SHA-256', encoder.encode(verifier));
+            const challenge = btoa(String.fromCharCode(...new Uint8Array(digest)))
+                .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+            return { verifier, challenge };
+        }
+
+        // --- Token refresh ---
+        async function refreshAccessToken() {
+            const refresh = localStorage.getItem('refresh_token');
+            if (!refresh) return false;
+            try {
+                const res = await fetch('https://accounts.spotify.com/api/token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({ client_id: CLIENT_ID, grant_type: 'refresh_token', refresh_token: refresh })
+                });
+                const data = await res.json();
+                if (data.access_token) {
+                    localStorage.setItem('access_token', data.access_token);
+                    if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
+                    return true;
+                }
+            } catch (e) {}
+            return false;
+        }
+
+        // --- Visible reconnect state ---
+        function showReconnectState() {
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('refresh_token');
+            const btn = document.getElementById('login-btn');
+            btn.textContent = 'Session expired \u2014 click to reconnect';
+            btn.style.display = 'block';
+        }
+
+        // --- Like / Unlike ---
+        async function checkLiked(trackId) {
+            const token = localStorage.getItem('access_token');
+            if (!token || !trackId) return;
+            try {
+                const r = await fetch('https://api.spotify.com/v1/me/tracks/contains?ids=' + trackId, {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                if (r.ok) {
+                    const data = await r.json();
+                    isLiked = data[0];
+                    const lb = document.getElementById('like-btn');
+                    lb.innerHTML = isLiked ? '&#9829;' : '&#9825;';
+                    lb.classList.toggle('liked', isLiked);
+                }
+            } catch(e) {}
+        }
+
+        async function toggleLike() {
+            const token = localStorage.getItem('access_token');
+            if (!token || !currentTrackId) return;
+            const method = isLiked ? 'DELETE' : 'PUT';
+            try {
+                await fetch('https://api.spotify.com/v1/me/tracks?ids=' + currentTrackId, {
+                    method,
+                    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }
+                });
+                isLiked = !isLiked;
+                const lb = document.getElementById('like-btn');
+                lb.innerHTML = isLiked ? '&#9829;' : '&#9825;';
+                lb.classList.toggle('liked', isLiked);
+            } catch(e) {}
+        }
+
+        // --- Playback commands ---
+        async function playbackCommand(endpoint, method) {
+            const token = localStorage.getItem('access_token');
+            if (!token) return;
+            try {
+                await fetch('https://api.spotify.com/v1/me/player/' + endpoint, {
+                    method: method || 'POST',
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+            } catch(e) {}
+        }
+
+        function toTitleCase(str) { return str.replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()); }
+
+        // --- Spotify polling (recursive setTimeout prevents interval stacking) ---
+        async function update() {
+            const token = localStorage.getItem('access_token');
+            if (!token) return;
+            try {
+                const r = await fetch('https://api.spotify.com/v1/me/player/currently-playing', {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                if (r.status === 401) {
+                    const ok = await refreshAccessToken();
+                    if (!ok) { showReconnectState(); return; }
+                } else if (r.status === 204) {
+                    document.getElementById('nothing-playing').style.display = 'block';
+                    albumArt.style.display = 'none'; credits.style.display = 'none';
+                    controls.style.display = 'none';
+                } else if (r.status === 200) {
+                    const d = await r.json();
+                    if (!d.item) {
+                        document.getElementById('nothing-playing').style.display = 'block';
+                        albumArt.style.display = 'none'; credits.style.display = 'none';
+                        controls.style.display = 'none';
+                        setTimeout(update, 2000); return;
+                    }
+                    document.getElementById('nothing-playing').style.display = 'none';
+                    document.getElementById('login-btn').style.display = 'none';
+                    albumArt.style.display = 'block'; credits.style.display = 'flex';
+                    controls.style.display = 'flex'; clockEl.style.display = 'block';
+                    if (albumArt.src !== d.item.album.images[0].url) {
+                        albumArt.src = d.item.album.images[0].url;
+                        document.getElementById('bg-blur').style.backgroundImage = 'url(' + d.item.album.images[0].url + ')';
+                        state = "ZOOM_IN"; zoomPhase = 0; fadeLevel = 0; currentX = 50; currentY = 50;
+                        albumArt.style.transformOrigin = "center center";
+                        checkLiked(d.item.id);
+                    }
+                    currentTrackId = d.item.id;
+                    isPlaying = d.is_playing;
+                    document.getElementById('play-btn').innerHTML = isPlaying ? '&#9208;' : '&#9654;';
+                    const prog = d.progress_ms, rem = d.item.duration_ms - prog;
+                    if (prog < 15000 || rem < 15000) credits.classList.add('credits-focal');
+                    else credits.classList.remove('credits-focal');
+                    document.getElementById('artist-name').innerText = toTitleCase(d.item.artists[0].name);
+                    document.getElementById('song-name').innerText = '"' + toTitleCase(d.item.name) + '"';
+                    document.getElementById('album-name').innerText = toTitleCase(d.item.album.name);
+                    document.getElementById('release-year').innerText = d.item.album.release_date.substring(0,4);
+                }
+            } catch (e) {}
+            setTimeout(update, 2000);
+        }
+
+        // --- Login button: full PKCE flow ---
+        document.getElementById('login-btn').onclick = () => {
+            if (!pkceChallenge) return;
+            window.location.assign('https://accounts.spotify.com/authorize?client_id=' + CLIENT_ID +
+                '&response_type=code&redirect_uri=' + encodeURIComponent(REDIRECT_URI) +
+                '&scope=' + encodeURIComponent(SCOPE) +
+                '&code_challenge_method=S256&code_challenge=' + pkceChallenge);
+        };
+
+        // --- Bootstrap: handle OAuth callback and start app ---
+        window.onload = async () => {
+            const code = new URLSearchParams(window.location.search).get('code');
+            if (code) {
+                try {
+                    const res = await fetch('https://accounts.spotify.com/api/token', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: new URLSearchParams({ client_id: CLIENT_ID, grant_type: 'authorization_code', code, redirect_uri: REDIRECT_URI, code_verifier: localStorage.getItem('code_verifier') })
+                    });
+                    const data = await res.json();
+                    if (data.access_token) {
+                        localStorage.setItem('access_token', data.access_token);
+                        if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
+                        window.history.replaceState({}, '', window.location.pathname);
+                        generatePKCE().then(p => { pkceVerifier = p.verifier; pkceChallenge = p.challenge; localStorage.setItem('code_verifier', p.verifier); });
+                    } else {
+                        document.getElementById('login-btn').textContent = 'Auth failed \u2014 click to try again';
+                    }
+                } catch (e) {
+                    document.getElementById('login-btn').textContent = 'Auth failed \u2014 click to try again';
+                }
+            }
+            if (localStorage.getItem('access_token')) { update(); runAnimation(); }
+        };
+
+        // --- Clock ---
+        function updateClock() {
+            const now = new Date();
+            const h = now.getHours(), m = now.getMinutes();
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            const h12 = h % 12 || 12;
+            clockEl.textContent = h12 + ':' + m.toString().padStart(2,'0') + ' ' + ampm;
+        }
+        updateClock();
+        setInterval(updateClock, 10000);
+
+        // --- Playback button handlers ---
+        document.getElementById('prev-btn').onclick = () => playbackCommand('previous');
+        document.getElementById('play-btn').onclick = () => playbackCommand(isPlaying ? 'pause' : 'play', 'PUT');
+        document.getElementById('next-btn').onclick = () => playbackCommand('next');
+        document.getElementById('like-btn').onclick = toggleLike;
+
+        // --- Settings panel (unchanged) ---
+        document.getElementById('game-toggle').onclick = (e) => {
+            isGameMode = !isGameMode; e.target.innerText = isGameMode ? "Mode: DVD BOUNCE" : "Mode: ZOOM";
+            const artContainer = document.getElementById('art-container');
+            const bounceCtrl = document.getElementById('bounce-controls');
+            const zoomCtrl = document.getElementById('zoom-controls');
+            const cornerTestBtn = document.getElementById('corner-test-btn');
+            if (isGameMode) { artContainer.style.display = 'block'; albumArt.style.position = 'absolute'; albumArt.style.width = DVD_SIZE + 'px'; albumArt.style.height = DVD_SIZE + 'px'; albumArt.style.maxWidth = 'none'; albumArt.style.maxHeight = 'none'; albumArt.style.transform = 'none'; bX = 100; bY = 100; bounceCtrl.style.display = 'block'; zoomCtrl.style.display = 'none'; cornerTestBtn.style.display = 'block'; }
+            else { artContainer.style.display = 'flex'; albumArt.style.position = 'relative'; albumArt.style.left = 'auto'; albumArt.style.top = 'auto'; albumArt.style.width = ''; albumArt.style.height = ''; albumArt.style.maxWidth = '80%'; albumArt.style.maxHeight = '80%'; bounceCtrl.style.display = 'none'; zoomCtrl.style.display = 'block'; cornerTestBtn.style.display = 'none'; }
+        };
+        document.getElementById('zoom-range').oninput = (e) => targetDepth = parseFloat(e.target.value);
+        document.getElementById('speed-range').oninput = (e) => {
+            zoomSpeed = (parseFloat(e.target.value) / 100) * 0.0006;
+        };
+        document.getElementById('bounce-speed').oninput = (e) => { const s = parseFloat(e.target.value); bVelX = bVelX > 0 ? s : -s; bVelY = bVelY > 0 ? s : -s; };
+        document.getElementById('logout-btn').onclick = () => { localStorage.clear(); location.reload(); };
+        document.getElementById('fs-btn').onclick = () => { if (!document.fullscreenElement) document.documentElement.requestFullscreen(); else document.exitFullscreen(); };
+        function cycleMode(modeName, btnId) {
+            if (modeName === 'clock') { clockMode = (clockMode + 1) % 3; document.getElementById(btnId).textContent = 'CLOCK: ' + MODES[clockMode]; if (clockMode === 2) clockEl.classList.add('vis-off'); else { clockEl.classList.remove('vis-off'); if (clockMode === 0) clockEl.classList.remove('ui-hidden'); } }
+            if (modeName === 'controls') { controlsMode = (controlsMode + 1) % 3; document.getElementById(btnId).textContent = 'CONTROLS: ' + MODES[controlsMode]; if (controlsMode === 2) controls.classList.add('vis-off'); else { controls.classList.remove('vis-off'); if (controlsMode === 0) controls.classList.remove('ui-hidden'); } }
+            if (modeName === 'credits') { creditsMode = (creditsMode + 1) % 3; document.getElementById(btnId).textContent = 'SONG INFO: ' + MODES[creditsMode]; if (creditsMode === 2) credits.classList.add('vis-off'); else { credits.classList.remove('vis-off'); if (creditsMode === 0) credits.classList.remove('ui-hidden'); } }
+        }
+        document.getElementById('clock-toggle').onclick = () => cycleMode('clock', 'clock-toggle');
+        document.getElementById('controls-toggle').onclick = () => cycleMode('controls', 'controls-toggle');
+        document.getElementById('credits-toggle').onclick = () => cycleMode('credits', 'credits-toggle');
+        document.getElementById('corner-test-btn').onclick = () => { bX = 0; bY = 0; bVelX = -Math.abs(bVelX); bVelY = -Math.abs(bVelY); };
+        document.getElementById('reset-btn').onclick = () => {
+            targetDepth = 4.0; document.getElementById('zoom-range').value = 4.0;
+            zoomSpeed = 0.0003; document.getElementById('speed-range').value = 50;
+            const s = 1.5; bVelX = bVelX > 0 ? s : -s; bVelY = bVelY > 0 ? s : -s; document.getElementById('bounce-speed').value = 1.5;
+        };

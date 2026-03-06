@@ -41,7 +41,7 @@
         let bX = 50, bY = 50, bVelX = 1.5, bVelY = 1.5;
 
         // --- Playback / Like state ---
-        let currentTrackId = null, isPlaying = false, isLiked = false;
+        let currentTrackId = null, currentAlbumId = null, isPlaying = false, isLiked = false;
         // --- Visibility modes: 0=ON, 1=FADE, 2=OFF ---
         let clockMode = 1, controlsMode = 1, creditsMode = 0;
         const MODES = ['ON', 'FADE', 'OFF'];
@@ -228,6 +228,23 @@
 
         function toTitleCase(str) { return str.replace(/\S+/g, w => { const letters = w.replace(/[^a-zA-Z]/g, ''); if (letters.length >= 2 && letters === letters.toUpperCase()) return w; return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase(); }); }
 
+        // --- Album label fetch ---
+        async function fetchAlbumLabel(albumId) {
+            const token = localStorage.getItem('access_token');
+            if (!token) return;
+            try {
+                const r = await fetch('https://api.spotify.com/v1/albums/' + albumId, {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                if (r.ok) {
+                    const data = await r.json();
+                    const year = data.release_date ? data.release_date.substring(0, 4) : '';
+                    const label = data.label || '';
+                    document.getElementById('label-line').innerText = label && year ? label + ' (' + year + ')' : label || year;
+                }
+            } catch(e) {}
+        }
+
         // --- Spotify polling (recursive setTimeout prevents interval stacking) ---
         async function update() {
             const token = localStorage.getItem('access_token');
@@ -262,6 +279,10 @@
                         albumArt.style.transformOrigin = "center center";
                         checkLiked(d.item.id);
                     }
+                    if (d.item.album.id !== currentAlbumId) {
+                        currentAlbumId = d.item.album.id;
+                        fetchAlbumLabel(currentAlbumId);
+                    }
                     currentTrackId = d.item.id;
                     isPlaying = d.is_playing;
                     document.getElementById('play-btn').innerHTML = isPlaying ? '&#9208;' : '&#9654;';
@@ -271,7 +292,6 @@
                     document.getElementById('artist-name').innerText = toTitleCase(d.item.artists[0].name);
                     document.getElementById('song-name').innerText = '"' + toTitleCase(d.item.name) + '"';
                     document.getElementById('album-name').innerText = toTitleCase(d.item.album.name);
-                    document.getElementById('release-year').innerText = d.item.album.release_date.substring(0,4);
                 }
             } catch (e) {}
             setTimeout(update, 2000);

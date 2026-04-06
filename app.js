@@ -34,6 +34,7 @@
                 panel.style.display = 'none';
                 panel.style.opacity = '';
                 panel.style.transition = '';
+                resetIdleTimer();
             }, 500);
         }
         function resetSettingsAutoClose() {

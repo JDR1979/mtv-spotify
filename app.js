@@ -23,6 +23,24 @@
         const clockEl = document.getElementById('clock');
         const flashEl = document.getElementById('corner-flash');
 
+        // --- Settings auto-close ---
+        let settingsAutoCloseTimer = null;
+        function closeSettingsFade() {
+            clearTimeout(settingsAutoCloseTimer);
+            settingsAutoCloseTimer = null;
+            panel.style.transition = 'opacity 500ms';
+            panel.style.opacity = '0';
+            setTimeout(() => {
+                panel.style.display = 'none';
+                panel.style.opacity = '';
+                panel.style.transition = '';
+            }, 500);
+        }
+        function resetSettingsAutoClose() {
+            clearTimeout(settingsAutoCloseTimer);
+            settingsAutoCloseTimer = setTimeout(closeSettingsFade, 5000);
+        }
+
         // --- Idle cursor / UI hide logic ---
         let idleTimer;
         function resetIdleTimer() {
@@ -43,7 +61,21 @@
             }
         }
         window.onmousemove = resetIdleTimer;
-        gear.onclick = () => { panel.style.display = (panel.style.display === 'flex') ? 'none' : 'flex'; resetIdleTimer(); };
+        gear.onclick = () => {
+            if (panel.style.display === 'flex') {
+                clearTimeout(settingsAutoCloseTimer);
+                settingsAutoCloseTimer = null;
+                panel.style.display = 'none';
+                panel.style.opacity = '';
+                panel.style.transition = '';
+            } else {
+                panel.style.display = 'flex';
+                resetSettingsAutoClose();
+            }
+            resetIdleTimer();
+        };
+        panel.addEventListener('input', resetSettingsAutoClose);
+        panel.addEventListener('click', resetSettingsAutoClose);
 
         // --- Ken Burns / DVD Bounce state (unchanged) ---
         let isGameMode = false, state = "ZOOM_IN", zoomPhase = 0, zoomSpeed = 0.0003, targetDepth = 4.0;
@@ -248,13 +280,21 @@
         async function toggleLike() {
             const token = await getValidToken();
             if (!token || !currentTrackId) return;
-            const method = isLiked ? 'DELETE' : 'PUT';
             try {
-                await fetch(SPOTIFY_API.TRACKS(currentTrackId), {
-                    method,
-                    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }
+                const checkRes = await fetch(SPOTIFY_API.TRACKS_CONTAINS(currentTrackId), {
+                    headers: { 'Authorization': 'Bearer ' + token }
                 });
-                isLiked = !isLiked;
+                if (!checkRes.ok) { showError('Failed to check like status.'); return; }
+                const checkData = await checkRes.json();
+                const currentlyLiked = checkData[0];
+                const updateToken = await getValidToken();
+                const updateRes = await fetch(SPOTIFY_API.TRACKS(currentTrackId), {
+                    method: currentlyLiked ? 'DELETE' : 'PUT',
+                    headers: { 'Authorization': 'Bearer ' + updateToken, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids: [currentTrackId] })
+                });
+                if (!updateRes.ok && updateRes.status !== 200) { showError('Failed to update like status.'); return; }
+                isLiked = !currentlyLiked;
                 const lb = document.getElementById('like-btn');
                 lb.innerHTML = isLiked ? '&#9829;' : '&#9825;';
                 lb.classList.toggle('liked', isLiked);
@@ -281,7 +321,7 @@
             }
         }
 
-        function toTitleCase(str) { return str.replace(/\S+/g, w => { const letters = w.replace(/[^a-zA-Z]/g, ''); if (letters.length >= 2 && letters === letters.toUpperCase()) return w; return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase(); }); }
+        function toTitleCase(str) { return str.replace(/\S+/g, w => { const letters = w.replace(/[^a-zA-Z]/g, ''); if (letters.length >= 2 && letters === letters.toUpperCase()) return w; return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase(); }).replace(/\(([a-z])/g, (_, c) => '(' + c.toUpperCase()); }
 
         // --- Album label fetch ---
         async function fetchAlbumLabel(albumId) {
@@ -383,7 +423,7 @@
                         isPlaying = d.is_playing;
                         document.getElementById('play-btn').innerHTML = isPlaying ? '&#9208;' : '&#9654;';
                         const prog = d.progress_ms, rem = d.item.duration_ms - prog;
-                        if (prog < 15000 || rem < 15000) credits.classList.add('credits-focal');
+                        if (prog < 7000 || rem < 7000) credits.classList.add('credits-focal');
                         else credits.classList.remove('credits-focal');
                         // DOM guards: only write if value changed
                         const artistEl = document.getElementById('artist-name');

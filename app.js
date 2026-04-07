@@ -5,7 +5,7 @@
             TOKEN:             'https://accounts.spotify.com/api/token',
             ALBUM:             (id) => `https://api.spotify.com/v1/albums/${id}`,
             TRACKS_CONTAINS:   (id) => `https://api.spotify.com/v1/me/tracks/contains?ids=${id}`,
-            TRACKS:            (id) => `https://api.spotify.com/v1/me/tracks?ids=${id}`,
+            TRACKS:            'https://api.spotify.com/v1/me/tracks',
         };
 
         const CLIENT_ID = '9b633913a2844cd5924c7e923f84325d';
@@ -79,7 +79,7 @@
         panel.addEventListener('click', resetSettingsAutoClose);
 
         // --- Ken Burns / DVD Bounce state (unchanged) ---
-        let isGameMode = false, state = "ZOOM_IN", zoomPhase = 0, zoomSpeed = 0.0003, targetDepth = 4.0;
+        let isGameMode = false, state = "ZOOM_IN", zoomPhase = 0, zoomSpeed = 0.001667, targetDepth = 4.0;
         let holdCounter = 0, fadeLevel = 0, currentX = 50, currentY = 50;
         let bX = 50, bY = 50, bVelX = 1.5, bVelY = 1.5;
 
@@ -282,19 +282,19 @@
             const token = await getValidToken();
             if (!token || !currentTrackId) return;
             try {
-                const checkRes = await fetch(SPOTIFY_API.TRACKS_CONTAINS(currentTrackId), {
+                const checkRes = await fetch(`https://api.spotify.com/v1/me/tracks/contains?ids=${currentTrackId}`, {
                     headers: { 'Authorization': 'Bearer ' + token }
                 });
                 if (!checkRes.ok) { showError('Failed to check like status.'); return; }
-                const checkData = await checkRes.json();
-                const currentlyLiked = checkData[0];
-                const updateToken = await getValidToken();
-                const updateRes = await fetch(SPOTIFY_API.TRACKS(currentTrackId), {
+                const currentlyLiked = (await checkRes.json())[0];
+                const updateRes = await fetch('https://api.spotify.com/v1/me/tracks', {
                     method: currentlyLiked ? 'DELETE' : 'PUT',
-                    headers: { 'Authorization': 'Bearer ' + updateToken, 'Content-Type': 'application/json' },
+                    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
                     body: JSON.stringify({ ids: [currentTrackId] })
                 });
-                if (!updateRes.ok && updateRes.status !== 200) { showError('Failed to update like status.'); return; }
+                if (updateRes.status !== 200 && updateRes.status !== 204) {
+                    showError('Failed to update like status.'); return;
+                }
                 isLiked = !currentlyLiked;
                 const lb = document.getElementById('like-btn');
                 lb.innerHTML = isLiked ? '&#9829;' : '&#9825;';
@@ -558,7 +558,7 @@
         };
         document.getElementById('zoom-range').oninput = (e) => targetDepth = parseFloat(e.target.value);
         document.getElementById('speed-range').oninput = (e) => {
-            zoomSpeed = (parseFloat(e.target.value) / 100) * 0.0006;
+            zoomSpeed = (parseFloat(e.target.value) / 100) * 0.003333;
         };
         document.getElementById('bounce-speed').oninput = (e) => { const s = parseFloat(e.target.value); bVelX = bVelX > 0 ? s : -s; bVelY = bVelY > 0 ? s : -s; };
         document.getElementById('logout-btn').onclick = () => { localStorage.clear(); location.reload(); };
@@ -574,6 +574,6 @@
         document.getElementById('corner-test-btn').onclick = () => { bX = 0; bY = 0; bVelX = -Math.abs(bVelX); bVelY = -Math.abs(bVelY); };
         document.getElementById('reset-btn').onclick = () => {
             targetDepth = 4.0; document.getElementById('zoom-range').value = 4.0;
-            zoomSpeed = 0.0003; document.getElementById('speed-range').value = 50;
+            zoomSpeed = 0.001667; document.getElementById('speed-range').value = 50;
             const s = 1.5; bVelX = bVelX > 0 ? s : -s; bVelY = bVelY > 0 ? s : -s; document.getElementById('bounce-speed').value = 1.5;
         };
